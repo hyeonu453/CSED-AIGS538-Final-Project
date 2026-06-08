@@ -1,0 +1,2 @@
+Explain knowledge distillation in one concise paragraph.
+What is the role of a router in a mixture-of-experts transformer?
