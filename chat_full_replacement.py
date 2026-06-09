@@ -43,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--qwen_layer", type=int, default=-1)
     parser.add_argument("--rank", type=int, default=32)
     parser.add_argument("--mole_alpha", type=float, default=-1.0)
-    parser.add_argument("--trainable", choices=["mole_router", "mole_only", "adapter", "all_replacement"], default="adapter")
+    parser.add_argument("--trainable", choices=["mole_router", "mole_only", "adapter", "projection_only", "all_replacement"], default="adapter")
     parser.add_argument("--reasoning_effort", type=str, default="medium")
     parser.add_argument("--max_new_tokens", type=int, default=256)
     parser.add_argument("--temperature", type=float, default=0.0)

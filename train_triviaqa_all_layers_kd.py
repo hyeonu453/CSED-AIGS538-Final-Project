@@ -567,7 +567,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--train_dtype", type=str, default="float32")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--teacher_device_map", type=str, default="auto_if_cuda")
-    parser.add_argument("--train_mode", choices=["adapter", "all"], default="adapter")
+    parser.add_argument("--train_mode", choices=["adapter", "projection_only", "all"], default="adapter")
     parser.add_argument("--no_init_from_qwen", action="store_true")
     parser.add_argument("--skip_full_replacement_eval", action="store_true")
     parser.add_argument("--skip_trained_layers", action="store_true")

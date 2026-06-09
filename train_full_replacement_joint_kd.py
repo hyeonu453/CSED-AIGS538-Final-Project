@@ -445,7 +445,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompt_loss_weight", type=float, default=0.0)
     parser.add_argument("--answer_loss_weight", type=float, default=1.0)
 
-    parser.add_argument("--trainable", choices=["mole_router", "mole_only", "adapter", "all_replacement"], default="mole_router")
+    parser.add_argument("--trainable", choices=["mole_router", "mole_only", "adapter", "projection_only", "all_replacement"], default="mole_router")
     parser.add_argument("--optim", choices=["adamw_8bit", "adamw"], default="adamw_8bit")
     parser.add_argument("--lr", type=float, default=1e-5)
     parser.add_argument("--lr_scheduler", choices=["constant", "cosine", "linear"], default="constant")

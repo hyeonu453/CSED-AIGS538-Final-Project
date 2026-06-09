@@ -154,7 +154,7 @@ def answer_token_count(batch: QABatch) -> int:
 def set_replacement_trainable(custom_layer: torch.nn.Module, mode: str) -> None:
     for param in custom_layer.parameters():
         param.requires_grad_(False)
-    if mode not in {"mole_router", "mole_only", "adapter", "all_replacement"}:
+    if mode not in {"mole_router", "mole_only", "adapter", "projection_only", "all_replacement"}:
         raise ValueError(f"Unknown trainable mode: {mode}")
 
     for name, param in custom_layer.named_parameters():
@@ -168,6 +168,8 @@ def set_replacement_trainable(custom_layer: torch.nn.Module, mode: str) -> None:
             train = is_mole or is_router
         elif mode == "adapter":
             train = is_projection or is_router or is_mole
+        elif mode == "projection_only":
+            train = is_projection
         else:  # all_replacement
             train = name.startswith("custom_layer")
         param.requires_grad_(train)

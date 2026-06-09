@@ -120,10 +120,12 @@ def set_trainable_parameters(model: CustomMoLELayer, mode: str) -> None:
         param.requires_grad_(mode == "all")
     if mode == "all":
         return
-    if mode != "adapter":
+    if mode not in {"adapter", "projection_only"}:
         raise ValueError(f"Unknown train mode: {mode}")
     for name, param in model.named_parameters():
-        if name.startswith(("proj_down", "proj_up", "mlp.router")) or name.endswith(("_mole_A", "_mole_B")):
+        if name.startswith(("proj_down", "proj_up")):
+            param.requires_grad_(True)
+        elif mode == "adapter" and (name.startswith("mlp.router") or name.endswith(("_mole_A", "_mole_B"))):
             param.requires_grad_(True)
 
 
