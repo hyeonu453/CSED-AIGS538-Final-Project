@@ -49,6 +49,17 @@ class GPTOSSLayerReplacement(nn.Module):
         **kwargs: Any,
     ) -> torch.Tensor:
         del position_embeddings
+        target_device = next(self.custom_layer.parameters()).device
+        if hidden_states.device != target_device:
+            hidden_states = hidden_states.to(target_device)
+        if attention_mask is not None and hasattr(attention_mask, "to"):
+            attention_mask = attention_mask.to(target_device)
+        if position_ids is not None and hasattr(position_ids, "to"):
+            position_ids = position_ids.to(target_device)
+        kwargs = {
+            key: value.to(target_device) if isinstance(value, torch.Tensor) else value
+            for key, value in kwargs.items()
+        }
         if position_ids is None:
             position_ids = torch.arange(hidden_states.shape[1], device=hidden_states.device).unsqueeze(0)
             position_ids = position_ids.expand(hidden_states.shape[0], -1)

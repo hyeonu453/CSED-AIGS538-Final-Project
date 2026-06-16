@@ -32,6 +32,7 @@ def build_train_command(args: argparse.Namespace, stage: str, output_dir: Path) 
     ]
     add_arg(cmd, "--student_model", args.student_model)
     add_arg(cmd, "--student_device", args.student_device)
+    add_arg(cmd, "--student_device_map", args.student_device_map)
     add_arg(cmd, "--model_dtype", args.model_dtype)
     add_arg(cmd, "--qwen_model", args.qwen_model)
     add_arg(cmd, "--layer_checkpoint_dir", args.current_set)
@@ -137,6 +138,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--student_model", default="openai/gpt-oss-20b")
     parser.add_argument("--student_device", default="cuda:1")
+    parser.add_argument("--student_device_map", default="single", choices=["single", "auto", "balanced", "balanced_low_0", "sequential"])
     parser.add_argument("--model_dtype", default="bfloat16")
     parser.add_argument("--qwen_model", default="Qwen/Qwen2.5-3B")
     parser.add_argument("--qwen_layer", type=int, default=-1)

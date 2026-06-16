@@ -172,7 +172,7 @@ def build_eval_cfg(args: argparse.Namespace):
                 "collators": {
                     "DataCollatorForSupervisedDataset": {
                         "handler": "DataCollatorForSupervisedDataset",
-                        "args": {"padding_side": "right", "index": True},
+                        "args": {"padding_side": "right", "index": "index"},
                     }
                 },
             }

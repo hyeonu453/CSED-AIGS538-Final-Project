@@ -10,8 +10,9 @@ from datasets import load_dataset
 from torch.utils.data import Dataset
 from transformers import AutoModelForCausalLM
 
-from gptoss_kd_capture import get_decoder_layers, get_dtype, unwrap_for_introspection
+from gptoss_kd_capture import first_tensor_device, get_decoder_layers, get_dtype, unwrap_for_introspection
 from kd_mole import GPTOSSLayerReplacement, build_custom_layer
+from kd_losses import free_cuda
 
 IGNORE_INDEX = -100
 
@@ -177,11 +178,13 @@ def set_replacement_trainable(custom_layer: torch.nn.Module, mode: str) -> None:
 
 def load_student_with_replacements(args: Any) -> tuple[torch.nn.Module, Any, dict[int, GPTOSSLayerReplacement]]:
     dtype = get_dtype(args.model_dtype)
-    print(f"=== Loading student backbone on {args.student_device} ===")
+    device_map_mode = getattr(args, "student_device_map", "single")
+    device_map = {"": args.student_device} if device_map_mode == "single" else device_map_mode
+    print(f"=== Loading student backbone with device_map={device_map} ===")
     model = AutoModelForCausalLM.from_pretrained(
         args.student_model,
         torch_dtype=dtype,
-        device_map={"": args.student_device},
+        device_map=device_map,
         trust_remote_code=args.trust_remote_code,
     )
     model.eval()
@@ -198,6 +201,10 @@ def load_student_with_replacements(args: Any) -> tuple[torch.nn.Module, Any, dic
         state_path = Path(args.layer_checkpoint_dir) / f"layer_{layer:02d}" / "custom_mole_layer.pt"
         if not state_path.exists():
             raise FileNotFoundError(f"Missing replacement checkpoint for layer {layer}: {state_path}")
+        old_layer = base_layers[layer]
+        layer_device = first_tensor_device(old_layer)
+        if layer_device.type == "meta":
+            layer_device = torch.device(args.student_device)
         custom_layer, qwen_config = build_custom_layer(
             teacher_config=inspected.config,
             qwen_model_name_or_path=args.qwen_model,
@@ -205,16 +212,19 @@ def load_student_with_replacements(args: Any) -> tuple[torch.nn.Module, Any, dic
             rank=args.rank,
             mole_alpha=args.mole_alpha,
             train_dtype=dtype,
-            device=args.student_device,
+            device=str(layer_device),
             init_from_qwen=False,
         )
         state = torch.load(state_path, map_location="cpu", weights_only=False)
         custom_layer.load_state_dict(state, strict=True)
-        replacement = GPTOSSLayerReplacement(custom_layer, qwen_config).to(device=args.student_device, dtype=dtype)
+        replacement = GPTOSSLayerReplacement(custom_layer, qwen_config).to(device=layer_device, dtype=dtype)
         set_replacement_trainable(replacement, args.trainable)
         base_layers[layer] = replacement
         replacements[layer] = replacement
-        print(f"[student] replaced layer {layer} from {state_path}")
+        del old_layer
+        if getattr(args, "free_replaced_layers", True):
+            free_cuda()
+        print(f"[student] replaced layer {layer} on {layer_device} from {state_path}")
 
     for _, param in model.named_parameters():
         if not any(param is p for repl in replacements.values() for p in repl.parameters()):

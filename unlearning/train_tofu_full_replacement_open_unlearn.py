@@ -38,7 +38,6 @@ from full_replacement_utils import (
     QABatch,
     SupervisedCollator,
     TofuQADataset,
-    batch_to_device,
     load_student_with_replacements,
     save_replacements,
 )
@@ -78,28 +77,47 @@ def set_optimizer_lr(optimizer: torch.optim.Optimizer, lr: float) -> None:
         group["lr"] = lr
 
 
-def model_ce_loss(model: torch.nn.Module, batch: QABatch, device: str) -> torch.Tensor:
-    inputs = batch_to_device(batch, device)
-    outputs = model(**inputs, use_cache=False)
-    return outputs.loss
+def get_model_input_device(model: torch.nn.Module, args: argparse.Namespace) -> torch.device:
+    if getattr(args, "student_device_map", "single") == "single":
+        return torch.device(args.student_device)
+    try:
+        return model.get_input_embeddings().weight.device
+    except Exception:
+        for param in model.parameters():
+            return param.device
+    return torch.device(args.student_device)
 
 
-def batch_nll_sum(model: torch.nn.Module, batch: QABatch, device: str) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    inputs = batch_to_device(batch, device)
+def batch_to_model_inputs(batch: QABatch, device: torch.device) -> tuple[dict[str, torch.Tensor], torch.Tensor]:
+    inputs = {
+        "input_ids": batch.input_ids.to(device),
+        "attention_mask": batch.attention_mask.to(device),
+    }
+    return inputs, batch.labels
+
+
+def batch_nll_sum(model: torch.nn.Module, batch: QABatch, args: argparse.Namespace) -> tuple[torch.Tensor, torch.Tensor]:
+    input_device = get_model_input_device(model, args)
+    inputs, labels = batch_to_model_inputs(batch, input_device)
     outputs = model(**inputs, use_cache=False)
     logits = outputs.logits[..., :-1, :].contiguous()
-    labels = inputs["labels"][..., 1:].contiguous()
+    labels = labels.to(logits.device)[..., 1:].contiguous()
     token_loss = nn.CrossEntropyLoss(ignore_index=IGNORE_INDEX, reduction="none")(
         logits.transpose(-1, -2),
         labels,
     )
     seq_loss = token_loss.sum(dim=-1)
     token_count = labels.ne(IGNORE_INDEX).sum(dim=-1).clamp_min(1)
-    return seq_loss, token_count, outputs.loss
+    return seq_loss, token_count
+
+
+def model_ce_loss(model: torch.nn.Module, batch: QABatch, args: argparse.Namespace) -> torch.Tensor:
+    seq_loss, token_count = batch_nll_sum(model, batch, args)
+    return seq_loss.sum() / token_count.sum().clamp_min(1)
 
 
 def simnpo_forget_loss(model: torch.nn.Module, batch: QABatch, args: argparse.Namespace) -> torch.Tensor:
-    seq_loss, token_count, _ = batch_nll_sum(model, batch, args.student_device)
+    seq_loss, token_count = batch_nll_sum(model, batch, args)
     forget_score = seq_loss / token_count - float(args.simnpo_delta)
     return -F.logsigmoid(float(args.simnpo_beta) * forget_score).mean() * 2.0 / float(args.simnpo_beta)
 
@@ -110,10 +128,10 @@ def unlearn_losses(
     retain_batch: QABatch | None,
     args: argparse.Namespace,
 ) -> dict[str, torch.Tensor]:
-    forget_ce = model_ce_loss(model, forget_batch, args.student_device)
-    retain_ce = torch.zeros((), device=args.student_device)
+    forget_ce = model_ce_loss(model, forget_batch, args)
+    retain_ce = forget_ce.new_zeros(())
     if retain_batch is not None:
-        retain_ce = model_ce_loss(model, retain_batch, args.student_device)
+        retain_ce = model_ce_loss(model, retain_batch, args)
 
     if args.method == "grad_ascent":
         forget_objective = -forget_ce
@@ -184,6 +202,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--student_model", type=str, default="openai/gpt-oss-20b")
     parser.add_argument("--student_device", type=str, default="cuda:1")
+    parser.add_argument("--student_device_map", choices=["single", "auto", "balanced", "balanced_low_0", "sequential"], default="single")
     parser.add_argument("--model_dtype", type=str, default="bfloat16")
     parser.add_argument("--qwen_model", type=str, default="Qwen/Qwen2.5-3B")
     parser.add_argument("--layer_checkpoint_dir", type=str, required=True)
